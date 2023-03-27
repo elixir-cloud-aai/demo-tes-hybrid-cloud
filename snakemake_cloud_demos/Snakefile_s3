@@ -2,6 +2,9 @@ from snakemake.remote.S3 import RemoteProvider as S3RemoteProvider
 
 localrules: all, download
 
+# any other remote storage is possible as well e.g. FTP
+# Remote storage has to be suported by Snakemake.
+# https://snakemake.readthedocs.io/en/stable/snakefiles/remote_files.html
 S3 = S3RemoteProvider(access_key_id="XXX", secret_access_key="XXX", endpoint_url="https://s3-elixir.cloud.e-infra.cz")
 
 #adjust to your own path
@@ -19,7 +22,7 @@ rule getFile:
         file=S3.remote(remote_file_s3)
     shell:
         """
-        curl 'https://www.athenarc.gr/sites/default/files/styles/news_first_page_img/public/news_archimedes_el.png' --output {output.file}
+        curl 'https://www.sowi.hu-berlin.de/de/lehrbereiche/s_professuren/copy_of_wissenschaftsforschung/bilder/bih-logo.png' --output {output.file}
         """
 
 
