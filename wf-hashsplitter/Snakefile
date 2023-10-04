@@ -5,16 +5,19 @@ localrules: all, download
 # any other remote storage is possible as well e.g. FTP
 # Remote storage has to be suported by Snakemake.
 # https://snakemake.readthedocs.io/en/stable/snakefiles/remote_files.html
-S3 = S3RemoteProvider(access_key_id="XXX", secret_access_key="XXX", endpoint_url="https://s3-elixir.cloud.e-infra.cz")
+S3 = S3RemoteProvider(
+    access_key_id="ACCESS_KEY_ID",
+    secret_access_key="SECRET_ACCESS_KEY",
+    endpoint_url="https://MY.S3_STORAGE.ORG")
 
-#adjust to your own path
-outfile_s3 = "bucket/key/outfile_smk_demo.txt"
-remote_file_s3 = "bucket/key/news_archimedes_el.png"
+# adjust to your own path
+outfile_s3 = "BUCKET/PATH/outfile_smk_demo.txt"
+remote_file_s3 = "BUCKET/PATH/news_archimedes_el.png"
 
 
 rule all:
     input:
-        file="outfile_local.txt"
+        file="results/outfile_local.txt"
 
 
 rule getFile:
@@ -44,7 +47,7 @@ rule download:
     input:
         file=S3.remote(outfile_s3)
     output:
-        file="outfile_local.txt"
+        file="results/outfile_local.txt"
     shell:
         """
         sleep 3
