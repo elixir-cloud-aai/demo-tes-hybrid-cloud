@@ -1,10 +1,8 @@
-snakemake_cloud_demos/.env
-snakemake_cloud_demos/.tes_instances
-/snakemake_cloud_demos.inputs
-.tmp
-.netrc
-results/
+.credentials
+.env
+.env_known
+.inputs
 .snakemake/
+.tes_instances*
 .ipynb_checkpoints
-config.yaml
-demo
+outfile_local.txt

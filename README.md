@@ -2,43 +2,45 @@
 
 ## Objectives
 
-Demonstrate workflow execution via the GA4GH TES backend of the Snakemake TES workflow engine.
+Demonstrate the federated execution of a Snakemake workflow across a network
+of compute centers operationalized through the GA4GH TES API.
 
-##
-NOTE: Tutorial and Information was adapted/copied from [CWL Demo][tut-cwl]
+> **Note:** This demonstrator was adapted from an [earlier
+> demonstrator][tut-cwl] focusing on the execution of a [CWL][lang-cwl]
+> workflow.
 
 ## Service requirements
 
 The following services were already deployed by ELIXIR for the demo:
 
-| Service | Service Type |Version / Image | Configuration | Comment |
+| Service | Service Type | Version / Image | Configuration | Comment |
 | --- | --- | --- | --- | --- |
-| [TESK][soft-tesk] | TES instance | `cerit.io/tes-wes/tesk-api:0.1` | Authorization checks disabled; RW permissions for FTP preconfigured | Deployments for Kubernetes and OpenShift |
-| [Funnel][soft-funnel] | TES instance | `0.10.1` (OpenPBS) / commit `#52ef90f` (Slurm) | Basic authentication; FTP access via basaic auth credentials in FTP URLs | Deployments for OpenPBS and Slurm; others possible |
-| [proTES][soft-protes] | TES clienet & instance | `elixircloud/protes:20230218` | Authorization checks disabled; all TESK and Funnel instances need to be listed in `tes.service_list` in the app configuration prior to | 
-| [vsftpd][soft-vsftpd] | FTP server |`3.0.2-29.el7_9.x86_64` on Rocky Linux 8 | Basic authentication | Deployments at multiple locations can be used for reading inputs, but not writing outputs, as long as access credentials are set in TESK instances _and_ basic authentication credentials are passed as part of the FTP URLs to Funnel |
+| [TESK][soft-tesk] | TES instance | `cerit.io/tes-wes/tesk-api:0.1` | Authorization checks disabled | Deployments for Kubernetes and OpenShift |
+| [Funnel][soft-funnel] | TES instance | `0.10.1` (OpenPBS) / commit `#52ef90f` (Slurm) | Basic authentication | Deployments for OpenPBS and Slurm; others possible |
+| [proTES][soft-protes] | TES clienet & instance | `elixircloud/protes:20230218` | Authorization checks disabled; all TESK and Funnel instances need to be listed in `tes.service_list` in the app configuration prior to executing the demo |
+| ?? | S3 server | ?? | ?? | ?? |
 
 ## Client requirements
 
-You can install all client requirements with Conda or Mamba:
+You can install the demo requirements with Conda or Mamba:
+
 ```bash
 conda env install -n demo-2023-ecp-f2f -f environment.yml
-
+# or
 mamba env install -n demo-2023-ecp-f2f -f environment.yml
 ```
 
-Install a specific version of py-tes from a specific commit on a fork:
+Reinstall `py-tes` and check out a specific commit:
 
 ```bash
-pip uninstall py-tes
-pip install git+https://github.com/ohsu-comp-bio/py-tes.git@a9ac2959fdb38bd31433d358724e20c2c544c6a1
+pip uninstall -y py-tes
+pip install git+https://github.com/ohsu-comp-bio/py-tes.git@5379b2a08bc911f7af55bd835dbd85aad0124c6a
 ```
 
 Verify the successful installation:
 
 ```bash
 curl --version
-cwl-tes --version
 jq --version
 jupyter --version
 jupyter-lab --version
@@ -47,9 +49,11 @@ snakemake --version
 
 Next, you need to create a listing of the available TES instances in a
 comma-seprated file `.tes_instances`. Two fields/columns are required, a
-description of the TES instance, and the URL pointing to it. You can use the
-following command to create such a file, but make sure to replace the example
-contents and do not use commas in the name/description field:
+description of the TES instance, and the URL pointing to it.
+
+> You can use the following command to create such a file, but make sure to
+> replace the example contents and do not use commas in the name/description
+> field:
 
 ```bash
 cat << "EOF" > .tes_instances
@@ -58,11 +62,6 @@ Funnel/PBS @ YetAnotherNode,https://tes.yet-another-node.org/
 TESK/Kubernetes @ OtherNode,https://tes.other-node.org/
 EOF
 ```
-
-> Note that due to some differences between TESK and Funnel in handling FTP
-> files, it is important that any Funnel service contains the substring
-> `Funnel`(case-sensitive!) in its name/description, as in the example content.
-> Otherwise, some of the demo tasks will not work for Funnel services!
 
 You will also need to create a comma-separated file `.inputs`, containing the
 locations of input files and the URLs pointing to them, in the first and second
@@ -87,12 +86,9 @@ is not sufficient to just the environment variables in your shell!
 
 ```bash
 cat << EOF > .env
-FTP_USER=$FTP_USER
-FTP_PASSWORD=$FTP_PASSWORD
 FUNNEL_SERVER_USER=$FUNNEL_SERVER_USER
 FUNNEL_SERVER_PASSWORD=$FUNNEL_SERVER_PASSWORD
 TES_GATEWAY=$TES_GATEWAY
-FTP_INSTANCE=$FTP_INSTANCE
 EOF
 ```
 
@@ -104,24 +100,22 @@ EOF
 Start the Jupiter notebook server with the following command:
 
 ```bash
-jupyter-lab snakemake_demo.ipynb
+jupyter-lab demo.ipynb
 ```
-Akternatively run the demo via Jupiter notebook or via your shell terminal.
 
+Alternatively, run the demo via Jupyter Notebook or via your shell terminal.
 
+[demo-cwl]: <https://github.com/elixir-cloud-aai/elixir-cloud-demos/tree/main/demos/2023-ecp-f2f>
 [docs-jupyter-lab]: <https://jupyterlab.readthedocs.io/>
 [lang-cwl]: <https://www.commonwl.org/>
 [lang-smk]: <https://snakemake.readthedocs.io/>
-[specs-tes]: <https://github.com/ga4gh/task-execution-schemas/>
 [soft-conda]: <https://conda.io/>
 [soft-curl]: <https://curl.se/>
-[soft-cwl-tes]: <https://github.com/ohsu-comp-bio/cwl-tes>
-[soft-vsftpd]: <https://security.appspot.com/vsftpd.html>
+[soft-funnel]: <https://ohsu-comp-bio.github.io/funnel>
 [soft-jupyter]: <https://jupyter.org/>
 [soft-kube]: <https://kubernetes.io/>
-[soft-funnel]: <https://ohsu-comp-bio.github.io/funnel>
 [soft-mamba]: <https://mamba.readthedocs.io/>
 [soft-protes]: <https://github.com/elixir-cloud-aai/proTES>
 [soft-py-tes]: <https://github.com/ohsu-comp-bio/py-tes>
 [soft-tesk]: <https://github.com/elixir-cloud-aai/tesk>
-[tut-cwl]: <https://github.com/elixir-cloud-aai/elixir-cloud-demos/tree/main/demos/2023-ecp-f2f>
+[specs-tes]: <https://github.com/ga4gh/task-execution-schemas/>
