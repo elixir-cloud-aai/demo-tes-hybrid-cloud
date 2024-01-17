@@ -1,42 +1,57 @@
 configfile: "./config.yaml"
 
-from snakemake.remote.S3 import RemoteProvider as S3RemoteProvider
+
 import os
+
+from snakemake.remote.S3 import RemoteProvider as S3RemoteProvider
+
 # For other supported storage providers (e.g., FTP), see Snakemake documentation:
 # https://snakemake.readthedocs.io/en/v7.0.2/snakefiles/remote_files.html
-S3 = S3RemoteProvider(access_key_id=os.environ["ACCESS_KEY_ID"], 
-                      secret_access_key=os.environ["SECRET_ACCESS_KEY"], 
-                      endpoint_url=os.environ["ENDPOINT_URL"])
+S3 = S3RemoteProvider(
+    access_key_id=os.environ["ACCESS_KEY_ID"],
+    secret_access_key=os.environ["SECRET_ACCESS_KEY"],
+    endpoint_url=os.environ["ENDPOINT_URL"],
+)
 
-# adjust to your own path
 outfile_s3 = os.path.join(os.environ["BUCKET_PATH"], "demo_outfile_result.txt")
 remote_sizes_file_s3 = os.path.join(os.environ["BUCKET_PATH"], "demo_sizes_file.txt")
 remote_out_file_s3 = os.path.join(os.environ["BUCKET_PATH"], "demo_logo.png")
 
-# a target rule to define the desired final output
+
 rule all:
     input:
-        S3.remote(outfile_s3)
+        S3.remote(outfile_s3),
+
 
 rule processing:
     output:
-        png =  S3.remote(os.path.join(os.environ["BUCKET_PATH"], "{file}_logo.png")),
-        file = S3.remote(os.path.join(os.environ["BUCKET_PATH"], "{file}_logo_size.txt"))
+        png=S3.remote(os.path.join(os.environ["BUCKET_PATH"], "{file}_logo.png")),
+        file=S3.remote(os.path.join(os.environ["BUCKET_PATH"], "{file}_logo_size.txt")),
     params:
-        url = lambda wildcards: config["urls"][wildcards.file],
+        url=lambda wildcards: config["urls"][wildcards.file],
     shell:
         """
-        wget '{params.url}' -O '{output.png}' && stat -c %s '{output.png}' > '{output.file}'
+        wget '{params.url}' -O '{output.png}' \
+            && stat -c %s '{output.png}' > '{output.file}'
         """
+
 
 rule gather:
     input:
-        file = S3.remote(expand(os.path.join(os.environ["BUCKET_PATH"], '{file}_logo_size.txt'), file=config["urls"].keys()))
+        file=S3.remote(
+            expand(
+                os.path.join(os.environ["BUCKET_PATH"], "{file}_logo_size.txt"),
+                file=config["urls"].keys(),
+            )
+        ),
     output:
-        file = S3.remote(remote_sizes_file_s3),
-        outfile = S3.remote(outfile_s3)
+        file=S3.remote(remote_sizes_file_s3),
+        outfile=S3.remote(outfile_s3),
     shell:
         """
         cat {input.file} > {output.file}
-        awk '{{ total += $1 }} END {{ print total/NR }}' {output.file} > {output.outfile}
+        awk \
+            '{{ total += $1 }} END {{ print total/NR }}' \
+            {output.file} \
+            > {output.outfile}
         """
