@@ -158,7 +158,11 @@ services:
     profiles: [demo]
     command: ["bash", "/src/local/run.sh"]
     volumes:
-      - ..:/src:ro
+      # Only what the client needs (never a `.env` of the host)
+      - ../demo.ipynb:/src/demo.ipynb:ro
+      - ../images:/src/images:ro
+      - ../wf-federated:/src/wf-federated:ro
+      - ./run.sh:/src/local/run.sh:ro
     depends_on:
       protes:
         condition: service_healthy

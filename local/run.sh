@@ -5,8 +5,8 @@
 # of the setup (which must match `compose.yaml` and `funnel.yaml`), runs all
 # cells of `demo.ipynb`, then checks the result of the workflow in S3 and the
 # tasks that went through proTES. It prints the output of all cells. Works on
-# a copy of the repository (mounted at `/src`), so that nothing is written to
-# it.
+# a copy of the files of the repository that it needs (mounted at `/src`), so
+# that nothing is written to them.
 set -euo pipefail
 
 gateway=http://protes:8080
@@ -16,7 +16,22 @@ work="$(mktemp -d)"
 cp -r /src/demo.ipynb /src/images /src/wf-federated "${work}"
 cd "${work}"
 
-token="$(curl -fsS 'http://fake-idp:8080/oidc/token?sub=demo-user' | jq -r .access_token)"
+# Wait for the S3 service (its image has no tools for a health check)
+python - << 'EOF'
+import socket
+import time
+
+for _ in range(60):
+    try:
+        socket.create_connection(("s3", 9000), 2).close()
+        break
+    except OSError:
+        time.sleep(1)
+else:
+    raise SystemExit("FAILED: the S3 service is not reachable")
+EOF
+
+token="$(curl -fsS --max-time 60 'http://fake-idp:8080/oidc/token?sub=demo-user' | jq -r .access_token)"
 
 cat << EOF > .tes_instances
 Funnel @ local-1,http://funnel-1:8000/
@@ -38,7 +53,7 @@ chmod 600 .env
 
 # Tasks of the gateway from earlier runs, which the checks below leave out
 tasks_url="${gateway}/ga4gh/tes/v1/tasks?view=MINIMAL"
-earlier="$(curl -fsS -H "Authorization: Bearer ${token}" "${tasks_url}" | jq -c '[.tasks[]?.id]')"
+earlier="$(curl -fsS --max-time 60 -H "Authorization: Bearer ${token}" "${tasks_url}" | jq -c '[.tasks[]?.id]')"
 
 echo "Running the notebook..."
 # Keeps the outputs of all cells, also if a cell fails or times out (checked
@@ -80,6 +95,7 @@ set -a
 source .env
 set +a
 python - << 'EOF'
+import math
 import os
 import sys
 
@@ -92,15 +108,15 @@ s3 = boto3.client(
     aws_access_key_id=os.environ["ACCESS_KEY_ID"],
     aws_secret_access_key=os.environ["SECRET_ACCESS_KEY"],
 )
-key = f"{prefix}/demo_outfile_result.txt"
+key = f"{prefix}/demo_outfile_result.txt" if prefix else "demo_outfile_result.txt"
 result = s3.get_object(Bucket=bucket, Key=key)["Body"].read().decode().strip()
 print(f"s3://{bucket}/{key}: {result}")
-if float(result) <= 0:
+if not (math.isfinite(float(result)) and float(result) > 0):
     sys.exit("FAILED: the mean size of the downloaded files is not positive")
 EOF
 
 echo "Checking the tasks of the gateway..."
-tasks="$(curl -fsS -H "Authorization: Bearer ${token}" "${tasks_url}" \
+tasks="$(curl -fsS --max-time 60 -H "Authorization: Bearer ${token}" "${tasks_url}" \
   | jq -c --argjson earlier "${earlier}" \
   '[.tasks[]? | select(.id as $id | $earlier | index($id) | not) | {id, state}]')"
 echo "${tasks}" | jq -c '.[]'
