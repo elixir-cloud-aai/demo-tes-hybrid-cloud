@@ -1,0 +1,41 @@
+# Config overlay of proTES in the local setup (`compose.yaml`): two Funnel
+# instances over plain HTTP, with Basic credentials, and the fake identity
+# provider (`fake_idp.py`). Tasks go to one of them at random (the default
+# pipeline of proTES). For local tests only.
+security:
+  auth:
+    issuers:
+      - http://fake-idp:8080/oidc/
+    audience:
+      - demo-tes-hybrid-cloud
+    userinfo_claims:
+      - groups
+  access_control:
+    claim_groups: groups
+    group_mapping:
+      demo-users: user
+    require_admin: false
+custom:
+  tes:
+    backends:
+      # Funnel reports an empty `type.version`, so it needs the label
+      - type: ga4gh-tes
+        url: http://funnel-1:8000
+        url_schemes: [http]
+        auth: basic
+        basic:
+          username_env: FUNNEL_SERVER_USER
+          password_env: FUNNEL_SERVER_PASSWORD
+        labels: {tes.version: "1.1"}
+      - type: ga4gh-tes
+        url: http://funnel-2:8000
+        url_schemes: [http]
+        auth: basic
+        basic:
+          username_env: FUNNEL_SERVER_USER
+          password_env: FUNNEL_SERVER_PASSWORD
+        labels: {tes.version: "1.1"}
+  controllers:
+    post_task:
+      polling:
+        wait: 1

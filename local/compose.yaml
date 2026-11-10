@@ -1,0 +1,172 @@
+# The services of the demo on one machine, in containers, for tests (job
+# `demo` of `.github/workflows/ci.yml`) and for trying the demo out:
+# `docker compose -f local/compose.yaml run --build --rm demo` runs the
+# notebook end to end and checks the results (`run.sh`). Two Funnel
+# instances with Basic credentials, proTES in front of them with a fake
+# identity provider, and an S3 service. Nothing is published on the host;
+# all credentials are dummy values. NOT for deployments.
+#
+# Funnel starts the executors of tasks as sibling containers on the host,
+# through the Docker socket, on the network of this setup; their work
+# directories are in `/tmp/demo-tes-hybrid-cloud` on the host. Remove them
+# with `docker compose -f local/compose.yaml down --volumes` and
+# `docker run --rm -v /tmp:/host-tmp alpine rm -rf /host-tmp/demo-tes-hybrid-cloud`.
+name: demo-tes-hybrid-cloud
+
+x-protes: &protes
+  image: docker.io/elixircloud/protes:0.6.0@sha256:f9a6c5bb077f1744d0e3e4d4dcfc085d0703223761295d1b28f67833db01322a
+  environment: &protes-env
+    CELERY_BROKER_URL: pyamqp://protes:protes@rabbitmq:5672//
+    FOCA_CONFIG_OVERLAY: /local/protes.yaml
+    # The Basic credentials of the Funnel instances (`protes.yaml`)
+    FUNNEL_SERVER_USER: local-user
+    FUNNEL_SERVER_PASSWORD: local-password
+  volumes:
+    - ./protes.yaml:/local/protes.yaml:ro
+  depends_on:
+    mongodb:
+      condition: service_healthy
+    rabbitmq:
+      condition: service_healthy
+    fake-idp:
+      condition: service_healthy
+    funnel-1:
+      condition: service_healthy
+    funnel-2:
+      condition: service_healthy
+
+x-funnel: &funnel
+  image: demo-tes-hybrid-cloud-funnel:local
+  pull_policy: build
+  build:
+    context: .
+    # The image of Funnel has no Docker CLI
+    dockerfile_inline: |
+      FROM docker.io/library/docker:28.3.3-cli@sha256:0135662b510037ea581d99c2e5929c5e01185139c0b86986a418bd4da0b98a44 AS cli
+      FROM quay.io/ohsu-comp-bio/funnel:0.11.14@sha256:8e10ba4de436b058bed95427110d9fe947142162078274a6a91cfe3b3eb8d15a
+      COPY --from=cli /usr/local/bin/docker /usr/local/bin/docker
+  # Root for the Docker socket
+  user: "0:0"
+  environment:
+    # For the health check, which uses the Funnel CLI
+    FUNNEL_SERVER_USER: local-user
+    FUNNEL_SERVER_PASSWORD: local-password
+  healthcheck:
+    test: ["CMD", "/app/funnel", "task", "list", "--server", "http://localhost:8000"]
+    interval: 3s
+    timeout: 5s
+    retries: 20
+    start_period: 3s
+
+services:
+
+  funnel-1:
+    <<: *funnel
+    command:
+      - server
+      - run
+      - --config=/etc/funnel.yaml
+      - --Worker.WorkDir=/tmp/demo-tes-hybrid-cloud/funnel-1
+      - --LocalStorage.AllowedDirs=/tmp/demo-tes-hybrid-cloud/funnel-1
+    volumes:
+      - ./funnel.yaml:/etc/funnel.yaml:ro
+      - /tmp/demo-tes-hybrid-cloud/funnel-1:/tmp/demo-tes-hybrid-cloud/funnel-1
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  funnel-2:
+    <<: *funnel
+    command:
+      - server
+      - run
+      - --config=/etc/funnel.yaml
+      - --Worker.WorkDir=/tmp/demo-tes-hybrid-cloud/funnel-2
+      - --LocalStorage.AllowedDirs=/tmp/demo-tes-hybrid-cloud/funnel-2
+    volumes:
+      - ./funnel.yaml:/etc/funnel.yaml:ro
+      - /tmp/demo-tes-hybrid-cloud/funnel-2:/tmp/demo-tes-hybrid-cloud/funnel-2
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  protes:
+    <<: *protes
+
+  protes-worker:
+    <<: *protes
+    command: ["celery", "--app", "pro_tes.celery_worker", "worker", "--loglevel=info"]
+    healthcheck:
+      disable: true
+
+  # Issues the access tokens of users (`fake_idp.py`), in the image of proTES,
+  # which has the libraries it needs
+  fake-idp:
+    image: docker.io/elixircloud/protes:0.6.0@sha256:f9a6c5bb077f1744d0e3e4d4dcfc085d0703223761295d1b28f67833db01322a
+    command: ["python", "/local/fake_idp.py"]
+    volumes:
+      - ./fake_idp.py:/local/fake_idp.py:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8080/oidc/.well-known/openid-configuration')"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  mongodb:
+    image: docker.io/library/mongo:7.0.45
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  rabbitmq:
+    image: docker.io/library/rabbitmq:4.3.7
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: protes
+      RABBITMQ_DEFAULT_PASS: protes
+    configs:
+      - source: rabbitmq-foca
+        target: /etc/rabbitmq/conf.d/90-foca.conf
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "--quiet", "ping"]
+      interval: 3s
+      timeout: 10s
+      retries: 20
+
+  # S3 service for the results of the workflow, with the bucket `demo`
+  s3:
+    image: docker.io/rclone/rclone:1.71.2@sha256:3103526c506266a9ecdf064efe99bf3677d92ef6407af124d8c56b4f49cbaa51
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        mkdir -p /data/demo
+        && exec rclone serve s3 /data --addr :9000
+        --auth-key local-access-key,local-secret-key
+
+  # The client: runs the notebook with the Conda environment of the README
+  demo:
+    image: demo-tes-hybrid-cloud-client:local
+    pull_policy: build
+    build:
+      context: ..
+      dockerfile: local/Dockerfile.client
+    profiles: [demo]
+    command: ["bash", "/src/local/run.sh"]
+    volumes:
+      - ..:/src:ro
+    depends_on:
+      protes:
+        condition: service_healthy
+      protes-worker:
+        condition: service_started
+      s3:
+        condition: service_started
+
+# Celery declares transient non-exclusive queues, which RabbitMQ 4.3 denies by
+# default (as in the Compose file of proTES)
+configs:
+  rabbitmq-foca:
+    content: |
+      deprecated_features.permit.transient_nonexcl_queues = true
+
+networks:
+  default:
+    name: demo-tes-hybrid-cloud

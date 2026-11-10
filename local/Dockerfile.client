@@ -1,0 +1,7 @@
+# The client of the local setup (`compose.yaml`): the Conda environment of the
+# README (`environment.yml`), which runs the notebook. The build context is the
+# repository root
+FROM mambaorg/micromamba:2.3.3@sha256:800e7ade3ffe29c9a9ac2026163131495f8197c3852e572c5835beb4e8a33cd6
+COPY --chown=$MAMBA_USER:$MAMBA_USER environment.yml /tmp/environment.yml
+RUN micromamba install --yes --name base --file /tmp/environment.yml \
+    && micromamba clean --all --yes

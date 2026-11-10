@@ -1,0 +1,51 @@
+# Everything that must pass on pull requests and pushes to `main`. No
+# `paths:` filters, so that the gate always reports. The gate `passed`
+# ("CI passed") is the only check to require; add every new job to its
+# `needs`.
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # The notebook end to end, against the local setup (`local/compose.yaml`):
+  # Funnel, proTES and S3 in containers, as the README's "Try it out locally"
+  demo:
+    name: Demo
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run the demo
+        run: docker compose -f local/compose.yaml run --build --rm -T demo
+      - name: Show logs
+        if: failure()
+        run: docker compose -f local/compose.yaml logs
+      - name: Remove containers
+        if: always()
+        run: docker compose -f local/compose.yaml --profile demo down --volumes
+
+  passed:
+    name: CI passed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    needs: [demo]
+    permissions: {}
+    steps:
+      - name: Check results of all jobs
+        uses: elixir-cloud-aai/.github/actions/gate@743e82d290a53768454999e413756a924e383259 # v1.0.0
+        with:
+          needs: ${{ toJSON(needs) }}
