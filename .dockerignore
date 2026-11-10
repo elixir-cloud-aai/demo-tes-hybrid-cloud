@@ -1,0 +1,4 @@
+# Build context of the client image (`local/Dockerfile.client`): only the
+# Conda environment, never secrets such as `.env`
+*
+!environment.yml

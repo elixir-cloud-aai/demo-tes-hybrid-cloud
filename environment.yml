@@ -5,8 +5,17 @@ channels:
 dependencies:
   - bash_kernel >=0.9.0
   - curl >=7.87.0
+  # Snakemake 7 lists the files of the workflow with Git for TES jobs
+  - git
   - jq >=1.6
   - jupyterlab >=3.6.1
   - pip >=23.0
-  - python >= 3.8.16
-  - snakemake >= 7.21.0, <8
+  # Below 3.12, which Snakemake 7 predates; its jobs run in the image
+  # `snakemake/snakemake:v7.32.4` with Python 3.11, the version that the
+  # local setup also resolves to
+  - python >=3.8.16, <3.12
+  - snakemake >=7.21.0, <8
+  - pip:
+      # 1.1.4 and later send the access token of `TES_TOKEN` if no Basic
+      # credentials are set (earlier commits sent Basic credentials instead)
+      - py-tes>=1.1.4

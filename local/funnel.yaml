@@ -1,0 +1,41 @@
+# Funnel as one of the TES instances of the local setup (`compose.yaml`),
+# which sets the work directory of each instance on the command line. The
+# server runs tasks itself (`local`), and their executors as sibling
+# containers through the Docker socket, on the network of the setup (to reach
+# the S3 service), so the work directory has the same path in Funnel and on
+# the host. `{{.Field}}` is Funnel's own template syntax. The Basic
+# credentials are dummy values, for local tests only.
+Database: boltdb
+Compute: local
+EventWriters:
+  - boltdb
+Logger:
+  Level: info
+Server:
+  HTTPPort: "8000"
+  RPCPort: "9090"
+  BasicAuth:
+    - User: local-user
+      Password: local-password
+# The worker reports to the server with the same credentials
+RPCClient:
+  Credential:
+    User: local-user
+    Password: local-password
+BoltDB:
+  Path: /var/lib/funnel/funnel.db
+Worker:
+  PollingRate: 1s
+  LogUpdateRate: 1s
+  Container:
+    DriverCommand: docker
+    RunCommand: |
+      run -i --network demo-tes-hybrid-cloud --label demo-tes-hybrid-cloud=task
+      {{if .RemoveContainer}}--rm{{end}}
+      {{.GetEnvArgs}}
+      {{if .Name}}--name "{{.Name}}"{{end}}
+      {{if .Workdir}}--workdir "{{.Workdir}}"{{end}}
+      {{range .Volumes}}--volume "{{.HostPath}}:{{.ContainerPath}}:{{if .Readonly}}ro{{else}}rw{{end}}" {{end}}
+      {{.Image}} {{.Command}}
+    PullCommand: pull {{.Image}}
+    StopCommand: rm -f {{.Name}}

@@ -31,8 +31,8 @@ rule processing:
         url=lambda wildcards: config["urls"][wildcards.file],
     shell:
         """
-        wget '{params.url}' -O '{output.png}' \
-            && stat -c %s '{output.png}' > '{output.file}'
+        wget {params.url:q} -O {output.png:q} \
+            && stat -c %s {output.png:q} > {output.file:q}
         """
 
 
