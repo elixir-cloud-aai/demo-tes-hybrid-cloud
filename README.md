@@ -10,36 +10,49 @@ centers operationalized through the GA4GH TES API.
 
 ## Service requirements
 
-The following services were already deployed by ELIXIR for the demo:
+The demo needs the following services. The versions are those that the
+[local setup](#try-it-out-locally) runs, and that the CI of this repository tests
+the demo with:
 
 | Service | Service Type | Version / Image | Configuration | Comment |
 | --- | --- | --- | --- | --- |
-| [TESK][soft-tesk] | TES | `cerit.io/tes-wes/tesk-api:0.1` | Authorization checks disabled | Deployments for Kubernetes and OpenShift |
-| [Funnel][soft-funnel] | TES | `0.10.1` (OpenPBS) / commit `#52ef90f` (Slurm) | Basic authentication | Deployments for OpenPBS and Slurm; others possible |
-| [proTES][soft-protes] | TES gateway | `elixircloud/protes:20230218` | Authorization checks disabled; all TESK and Funnel instances need to be listed in `tes.service_list` in the app configuration prior to executing the demo | &mdash; |
-| [MinIO][soft-minio] | Storage (S3) | `RELEASE.2022-05-08T23-50-31Z` | Standard | Uses filesystem mode ([unsupported in newer versions][soft-minio-filesystem-mode]) |
+| [Funnel][soft-funnel] | TES | `quay.io/ohsu-comp-bio/funnel:0.11.14` | Basic authentication | Deployments for Docker, OpenPBS, Slurm and others; all Funnel instances share one set of credentials (`FUNNEL_SERVER_USER`, `FUNNEL_SERVER_PASSWORD`) |
+| [TESK][soft-tesk] | TES | &mdash; | Authorization checks disabled | Deployments for Kubernetes and OpenShift; not part of the local setup |
+| [proTES][soft-protes] | TES gateway | `elixircloud/protes:0.6.0` | Access tokens of the users; all TES instances listed in `custom.tes.backends` of the app configuration (see [Configuration][protes-config]) | Routes each task to one of its TES instances at random; [routing by distance to the data][protes-distance] is an opt-in of the operator |
+| S3 | Storage | Any S3 service | One bucket that the client and all TES instances can reach | The local setup uses [rclone][soft-rclone] (`rclone serve s3`) |
+
+The demo was first run in 2023 on services deployed by ELIXIR, with TESK
+(`cerit.io/tes-wes/tesk-api:0.1`), Funnel 0.10.1, proTES
+`elixircloud/protes:20230218` and [MinIO][soft-minio]. Since proTES 0.3.0, the
+gateway requires an access token for all task requests; since proTES 0.4.0, it lists
+its TES instances in `custom.tes.backends` instead of `tes.service_list` (see the
+[upgrade steps][protes-upgrading]).
 
 ## Client requirements
 
-You can install the demo requirements with Conda or Mamba:
+You need Git, and Conda or Mamba. Clone the repository and install the demo
+requirements:
 
 ```bash
-conda env install -n demo-tes-hybrid-cloud -f environment.yml
+git clone https://github.com/elixir-cloud-aai/demo-tes-hybrid-cloud.git
+cd demo-tes-hybrid-cloud
+conda env create -n demo-tes-hybrid-cloud -f environment.yml
 # or
-mamba env install -n demo-tes-hybrid-cloud -f environment.yml
+mamba env create -n demo-tes-hybrid-cloud -f environment.yml
+conda activate demo-tes-hybrid-cloud
 ```
 
-Reinstall `py-tes` and check out a specific commit:
-
-```bash
-pip uninstall -y py-tes
-pip install git+https://github.com/ohsu-comp-bio/py-tes.git@5379b2a08bc911f7af55bd835dbd85aad0124c6a
-```
+The environment has Snakemake 7, whose option `--tes` runs the jobs of a workflow on a
+TES instance (Snakemake 8 and later use the [TES executor plugin][soft-smk-tes]
+instead), and [`py-tes`][soft-py-tes] 1.1.4 or later, which sends the access token
+of `TES_TOKEN` to the gateway. Earlier `py-tes` commits (e.g., `5379b2a`) send Basic
+credentials instead, which proTES doesn't accept.
 
 Verify the successful installation:
 
 ```bash
 curl --version
+git --version
 jq --version
 jupyter --version
 jupyter-lab --version
@@ -56,7 +69,7 @@ couple of configuration files that represent _your_ specific setup.
 
 First, you need to create a listing of the available TES instances in a comma-separated
 file `.tes_instances`. Two fields/columns are required, a description of the TES
-TES instance, and the URL pointing to it.
+instance, and the URL pointing to it.
 
 > You can use the following command to create such a file, but make sure to
 > replace the example contents and do not use commas in the name/description
@@ -72,36 +85,46 @@ EOF
 
 ### Workflow inputs
 
-You will also need to create a comma-separated file `.inputs`, containing the locations
-of input files and the URLs pointing to them, in the first and second field,
-respectively. Additionally, the file needs to include one row, in which the first field
-is `workflow` (case-sensitive!). This file will be used as an input to the example CWL
-workflow in the last part. You can use the following command to create such a file, but
-make sure to replace the example contents.  Also make sure not to include commas in the
-file location field.
-
-```bash
-cat << "EOF" > .inputs
-location_x,https://link.to.some/file.txt
-location_y,https://link.to.some/other_file.tab
-location_z,https://link.to.some/third_file.png
-workflow,https://link.to.some/workflow_input
-```
+The workflow downloads one file from each of the URLs under `urls` in
+`wf-federated/config.yaml`, in a task of its own, and writes the mean size of the
+files to S3. You can replace them with the URLs of any small files that the TES
+instances can reach. The jobs run in the image of Snakemake
+(`snakemake/snakemake:v<version>`), whose certificate store dates from the release of
+that version: check new URLs with `wget` in that image.
 
 ### Credentials
 
 Finally, you will need to create a secrets file `.env` with the following command. You
 can either set the environment variables in your shell or set the actual values in the
-command below. Either way, you need to create the file, it is not sufficient to just the
-environment variables in your shell!
+command below. Either way, you need to create the file, it is not sufficient to just
+set the environment variables in your shell! The file holds passwords and a token:
+never commit or share it, and make only you able to read it.
 
 ```bash
 cat << EOF > .env
-FUNNEL_SERVER_USER=$FUNNEL_SERVER_USER
-FUNNEL_SERVER_PASSWORD=$FUNNEL_SERVER_PASSWORD
-TES_GATEWAY=$TES_GATEWAY
+export FUNNEL_SERVER_USER=$FUNNEL_SERVER_USER
+export FUNNEL_SERVER_PASSWORD=$FUNNEL_SERVER_PASSWORD
+export TES_GATEWAY=$TES_GATEWAY
+export TES_TOKEN=$TES_TOKEN
+export ACCESS_KEY_ID=$ACCESS_KEY_ID
+export SECRET_ACCESS_KEY=$SECRET_ACCESS_KEY
+export ENDPOINT_URL=$ENDPOINT_URL
+export BUCKET_PATH=$BUCKET_PATH
 EOF
+chmod 600 .env
 ```
+
+| Variable | Value |
+| --- | --- |
+| `FUNNEL_SERVER_USER`, `FUNNEL_SERVER_PASSWORD` | The Basic credentials of the Funnel instances. |
+| `TES_GATEWAY` | The base URL of the proTES gateway, e.g., `https://protes.example.org`. |
+| `TES_TOKEN` | An access token for the proTES gateway. |
+| `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY` | The credentials of the S3 service. |
+| `ENDPOINT_URL` | The URL of the S3 service. |
+| `BUCKET_PATH` | The bucket, and optionally a path in it, for the results, e.g., `my-bucket/demo`. |
+
+Snakemake passes the S3 settings (`--envvars`) to its jobs with each task, so the TES
+instances and the gateway can read them: use credentials for the results bucket only.
 
 ## Start notebook server
 
@@ -111,7 +134,35 @@ Start the Jupiter notebook server with the following command:
 jupyter-lab demo.ipynb
 ```
 
-Alternatively, run the demo via Jupyter Notebook or via your shell terminal.
+Alternatively, run the demo via Jupyter Notebook or via your shell terminal. The
+notebook runs the workflow on each TES instance in turn, then through the gateway.
+Before the run through the gateway, it unsets `FUNNEL_SERVER_USER` and
+`FUNNEL_SERVER_PASSWORD`, as Snakemake would otherwise send them instead of the
+access token.
+
+## Try it out locally
+
+The directory `local` has a setup of all services on one machine, with Docker Compose:
+two Funnel instances, proTES in front of them with a fake identity provider, and an S3
+service. It runs the notebook end to end with the Conda environment of
+`environment.yml`, and checks the result in S3 and the tasks of the gateway. It needs
+Docker with Compose, and access to the internet (for the images and the files of the
+workflow):
+
+```bash
+docker compose -f local/compose.yaml run --build --rm demo
+```
+
+It ends with `PASSED: the demo ran end to end`. The executors of the tasks run as
+containers on the host, through the Docker socket, and their work directories are
+in `/tmp/demo-tes-hybrid-cloud`. All credentials of the setup are dummy values, and
+the identity provider hands tokens to anyone: for local tests only. Remove the
+setup afterwards:
+
+```bash
+docker compose -f local/compose.yaml down --volumes
+docker run --rm -v /tmp:/host-tmp alpine rm -rf /host-tmp/demo-tes-hybrid-cloud
+```
 
 ## Contact
 
@@ -120,18 +171,14 @@ also reach out to us if you would like to execute the demonstrator on the ELIXIR
 infrastructure.
 
 [demo-cwl]: <https://github.com/elixir-cloud-aai/elixir-cloud-demos/tree/main/demos/2023-ecp-f2f>
-[docs-jupyter-lab]: <https://jupyterlab.readthedocs.io/>
 [lang-cwl]: <https://www.commonwl.org/>
-[lang-smk]: <https://snakemake.readthedocs.io/>
-[soft-conda]: <https://conda.io/>
-[soft-curl]: <https://curl.se/>
+[protes-config]: <https://protes.readthedocs.io/en/latest/configuration/>
+[protes-distance]: <https://protes.readthedocs.io/en/latest/plugins/#routing-by-distance-to-the-data-opt-in>
+[protes-upgrading]: <https://protes.readthedocs.io/en/latest/upgrading/>
 [soft-funnel]: <https://ohsu-comp-bio.github.io/funnel>
-[soft-jupyter]: <https://jupyter.org/>
-[soft-kube]: <https://kubernetes.io/>
-[soft-mamba]: <https://mamba.readthedocs.io/>
 [soft-minio]: <https://min.io/>
-[soft-minio-filesystem-mode]: <https://min.io/docs/minio/linux/operations/install-deploy-manage/migrate-fs-gateway.html>
 [soft-protes]: <https://github.com/elixir-cloud-aai/proTES>
 [soft-py-tes]: <https://github.com/ohsu-comp-bio/py-tes>
+[soft-rclone]: <https://rclone.org/commands/rclone_serve_s3/>
+[soft-smk-tes]: <https://github.com/snakemake/snakemake-executor-plugin-tes>
 [soft-tesk]: <https://github.com/elixir-cloud-aai/tesk>
-[specs-tes]: <https://github.com/ga4gh/task-execution-schemas/>
