@@ -61,7 +61,7 @@ snakemake --version
 
 ## Create configuration files
 
-The demonstrator is set up in a way that it can be run on, in principle, on any
+The demonstrator is set up in a way that it can be run, in principle, on any
 Funnel/TESK TES network and on any input files. Therefore, we first need to create a
 couple of configuration files that represent _your_ specific setup.
 
@@ -118,17 +118,17 @@ chmod 600 .env
 | --- | --- |
 | `FUNNEL_SERVER_USER`, `FUNNEL_SERVER_PASSWORD` | The Basic credentials of the Funnel instances. |
 | `TES_GATEWAY` | The base URL of the proTES gateway, e.g., `https://protes.example.org`. |
-| `TES_TOKEN` | An access token for the proTES gateway. |
+| `TES_TOKEN` | An access token for the proTES gateway, from an identity provider that the gateway accepts (its issuer and audience, see [Access control][protes-access]). |
 | `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY` | The credentials of the S3 service. |
 | `ENDPOINT_URL` | The URL of the S3 service. |
-| `BUCKET_PATH` | The bucket, and optionally a path in it, for the results, e.g., `my-bucket/demo`. |
+| `BUCKET_PATH` | The bucket, and optionally a path in it, for the results, e.g., `my-bucket/demo`. The bucket must exist. |
 
 Snakemake passes the S3 settings (`--envvars`) to its jobs with each task, so the TES
 instances and the gateway can read them: use credentials for the results bucket only.
 
 ## Start notebook server
 
-Start the Jupiter notebook server with the following command:
+Start the Jupyter notebook server with the following command:
 
 ```bash
 jupyter-lab demo.ipynb
@@ -136,9 +136,10 @@ jupyter-lab demo.ipynb
 
 Alternatively, run the demo via Jupyter Notebook or via your shell terminal. The
 notebook runs the workflow on each TES instance in turn, then through the gateway.
-Before the run through the gateway, it unsets `FUNNEL_SERVER_USER` and
-`FUNNEL_SERVER_PASSWORD`, as Snakemake would otherwise send them instead of the
-access token.
+Snakemake sends the Basic credentials of the Funnel instances if they are set, and
+the access token otherwise: the notebook leaves out `TES_TOKEN` for the runs on the
+TES instances, and `FUNNEL_SERVER_USER` and `FUNNEL_SERVER_PASSWORD` for the run
+through the gateway, so that each service gets only its own credentials. A cell fails if one of its Snakemake runs fails.
 
 ## Try it out locally
 
@@ -153,14 +154,17 @@ workflow):
 docker compose -f local/compose.yaml run --build --rm demo
 ```
 
-It ends with `PASSED: the demo ran end to end`. The executors of the tasks run as
+The first run builds the images of the client and of Funnel and pulls the others,
+which takes several minutes. It prints the output of all cells, and ends with
+`PASSED: the demo ran end to end`. The executors of the tasks run as
 containers on the host, through the Docker socket, and their work directories are
 in `/tmp/demo-tes-hybrid-cloud`. All credentials of the setup are dummy values, and
 the identity provider hands tokens to anyone: for local tests only. Remove the
 setup afterwards:
 
 ```bash
-docker compose -f local/compose.yaml down --volumes
+docker ps -aq --filter label=demo-tes-hybrid-cloud=task | xargs -r docker rm -f
+docker compose -f local/compose.yaml --profile demo down --volumes
 docker run --rm -v /tmp:/host-tmp alpine rm -rf /host-tmp/demo-tes-hybrid-cloud
 ```
 
@@ -172,6 +176,7 @@ infrastructure.
 
 [demo-cwl]: <https://github.com/elixir-cloud-aai/elixir-cloud-demos/tree/main/demos/2023-ecp-f2f>
 [lang-cwl]: <https://www.commonwl.org/>
+[protes-access]: <https://protes.readthedocs.io/en/latest/access-control/>
 [protes-config]: <https://protes.readthedocs.io/en/latest/configuration/>
 [protes-distance]: <https://protes.readthedocs.io/en/latest/plugins/#routing-by-distance-to-the-data-opt-in>
 [protes-upgrading]: <https://protes.readthedocs.io/en/latest/upgrading/>

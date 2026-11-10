@@ -4,17 +4,24 @@
 # notebook end to end and checks the results (`run.sh`). Two Funnel
 # instances with Basic credentials, proTES in front of them with a fake
 # identity provider, and an S3 service. Nothing is published on the host;
-# all credentials are dummy values. NOT for deployments.
+# all credentials are dummy values, and must match those of `funnel.yaml`
+# and `run.sh`. NOT for deployments.
 #
 # Funnel starts the executors of tasks as sibling containers on the host,
 # through the Docker socket, on the network of this setup; their work
 # directories are in `/tmp/demo-tes-hybrid-cloud` on the host. Remove them
-# with `docker compose -f local/compose.yaml down --volumes` and
+# (and the executors of interrupted runs) with
+# `docker ps -aq --filter label=demo-tes-hybrid-cloud=task | xargs -r docker rm -f`,
+# `docker compose -f local/compose.yaml --profile demo down --volumes` and
 # `docker run --rm -v /tmp:/host-tmp alpine rm -rf /host-tmp/demo-tes-hybrid-cloud`.
 name: demo-tes-hybrid-cloud
 
+# The image of proTES, also for the fake identity provider, which uses its
+# libraries (bump the version in the README, too)
+x-protes-image: &protes-image docker.io/elixircloud/protes:0.6.0@sha256:f9a6c5bb077f1744d0e3e4d4dcfc085d0703223761295d1b28f67833db01322a
+
 x-protes: &protes
-  image: docker.io/elixircloud/protes:0.6.0@sha256:f9a6c5bb077f1744d0e3e4d4dcfc085d0703223761295d1b28f67833db01322a
+  image: *protes-image
   environment: &protes-env
     CELERY_BROKER_URL: pyamqp://protes:protes@rabbitmq:5672//
     FOCA_CONFIG_OVERLAY: /local/protes.yaml
@@ -98,7 +105,7 @@ services:
   # Issues the access tokens of users (`fake_idp.py`), in the image of proTES,
   # which has the libraries it needs
   fake-idp:
-    image: docker.io/elixircloud/protes:0.6.0@sha256:f9a6c5bb077f1744d0e3e4d4dcfc085d0703223761295d1b28f67833db01322a
+    image: *protes-image
     command: ["python", "/local/fake_idp.py"]
     volumes:
       - ./fake_idp.py:/local/fake_idp.py:ro

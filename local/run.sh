@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Runs the notebook of the demo end to end in the local setup (service `demo`
-# of `compose.yaml`), as the README describes it, and checks the results: the
-# configuration files that the README asks for, with the services of the
-# setup, then all cells of `demo.ipynb`, then the result of the workflow in
-# S3 and the tasks that went through proTES. Works on a copy of the
+# of `compose.yaml`), and checks the results: it writes the configuration
+# files that the README asks for, with the services and the dummy credentials
+# of the setup (which must match `compose.yaml` and `funnel.yaml`), runs all
+# cells of `demo.ipynb`, then checks the result of the workflow in S3 and the
+# tasks that went through proTES. It prints the output of all cells. Works on a copy of the
 # repository (mounted at `/src`), so that nothing is written to it.
 set -euo pipefail
 
@@ -34,14 +35,22 @@ export BUCKET_PATH=${bucket_path}
 EOF
 chmod 600 .env
 
-echo "Running the notebook..."
-status=0
-jupyter nbconvert --to notebook --execute --inplace \
-  --ExecutePreprocessor.timeout=1800 demo.ipynb || status=$?
+# Tasks of the gateway from earlier runs, which the checks below leave out
+tasks_url="${gateway}/ga4gh/tes/v1/tasks?view=MINIMAL"
+earlier="$(curl -fsS -H "Authorization: Bearer ${token}" "${tasks_url}" | jq -c '[.tasks[]?.id]')"
 
-# The output of each cell, also if a cell failed
-python - << 'EOF'
+echo "Running the notebook..."
+# Keeps the outputs of all cells, also if a cell fails (checked below)
+jupyter nbconvert --to notebook --execute --inplace --allow-errors \
+  --ExecutePreprocessor.timeout=1800 demo.ipynb
+
+# The output of each cell; fails if a cell failed
+status=0
+python - << 'EOF' || status=$?
 import json
+import sys
+
+failed = False
 
 with open("demo.ipynb", encoding="utf-8") as stream:
     notebook = json.load(stream)
@@ -55,6 +64,8 @@ for index, cell in enumerate(notebook["cells"]):
         print("".join(output.get("text", "")), end="")
         if output.get("output_type") == "error":
             print(f"ERROR: {output.get('ename')} {output.get('evalue')}")
+            failed = True
+sys.exit(1 if failed else 0)
 EOF
 if [ "${status}" -ne 0 ]; then
   echo "FAILED: the notebook did not run through" >&2
@@ -62,17 +73,21 @@ if [ "${status}" -ne 0 ]; then
 fi
 
 echo "Checking the result in S3..."
-python - "${bucket_path}" << 'EOF'
+set -a
+source .env
+set +a
+python - << 'EOF'
+import os
 import sys
 
 import boto3
 
-bucket, _, prefix = sys.argv[1].partition("/")
+bucket, _, prefix = os.environ["BUCKET_PATH"].partition("/")
 s3 = boto3.client(
     "s3",
-    endpoint_url="http://s3:9000",
-    aws_access_key_id="local-access-key",
-    aws_secret_access_key="local-secret-key",
+    endpoint_url=os.environ["ENDPOINT_URL"],
+    aws_access_key_id=os.environ["ACCESS_KEY_ID"],
+    aws_secret_access_key=os.environ["SECRET_ACCESS_KEY"],
 )
 key = f"{prefix}/demo_outfile_result.txt"
 result = s3.get_object(Bucket=bucket, Key=key)["Body"].read().decode().strip()
@@ -82,11 +97,12 @@ if float(result) <= 0:
 EOF
 
 echo "Checking the tasks of the gateway..."
-tasks="$(curl -fsS -H "Authorization: Bearer ${token}" \
-  "${gateway}/ga4gh/tes/v1/tasks?view=MINIMAL")"
-echo "${tasks}" | jq -c '.tasks[] | {id, state}'
+tasks="$(curl -fsS -H "Authorization: Bearer ${token}" "${tasks_url}" \
+  | jq -c --argjson earlier "${earlier}" \
+  '[.tasks[]? | select(.id as $id | $earlier | index($id) | not) | {id, state}]')"
+echo "${tasks}" | jq -c '.[]'
 # One task for each of the four downloads, and one to gather the sizes
-echo "${tasks}" | jq -e '(.tasks | length) >= 5 and all(.tasks[]; .state == "COMPLETE")' > /dev/null \
-  || { echo "FAILED: expected at least 5 tasks, all COMPLETE" >&2; exit 1; }
+echo "${tasks}" | jq -e 'length >= 5 and all(.[]; .state == "COMPLETE")' > /dev/null \
+  || { echo "FAILED: expected at least 5 new tasks, all COMPLETE" >&2; exit 1; }
 
 echo "PASSED: the demo ran end to end"

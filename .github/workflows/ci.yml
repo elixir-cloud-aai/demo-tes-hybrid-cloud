@@ -18,7 +18,8 @@ concurrency:
 
 jobs:
   # The notebook end to end, against the local setup (`local/compose.yaml`):
-  # Funnel, proTES and S3 in containers, as the README's "Try it out locally"
+  # Funnel, proTES and S3 in containers, as in the section "Try it out
+  # locally" of the README
   demo:
     name: Demo
     runs-on: ubuntu-latest
@@ -33,9 +34,12 @@ jobs:
       - name: Show logs
         if: failure()
         run: docker compose -f local/compose.yaml logs
+      # Also the executors of tasks, which Funnel starts outside of Compose
       - name: Remove containers
         if: always()
-        run: docker compose -f local/compose.yaml --profile demo down --volumes
+        run: |
+          docker ps -aq --filter label=demo-tes-hybrid-cloud=task | xargs -r docker rm -f
+          docker compose -f local/compose.yaml --profile demo down --volumes
 
   passed:
     name: CI passed
