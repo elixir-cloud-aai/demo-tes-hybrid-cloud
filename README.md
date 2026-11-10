@@ -8,6 +8,12 @@ centers operationalized through the GA4GH TES API.
 > **Note:** This demonstrator was adapted from an [earlier demonstrator][demo-cwl]
 > focusing on the execution of a [CWL][lang-cwl] workflow.
 
+> **Note:** The version cited in publications is the release
+> [1.0.0][release-1-0-0] ([10.5281/zenodo.17038656][zenodo-1-0-0]), which was built
+> for the services of 2023 (see below). The default branch has since been updated
+> to run with current proTES releases; check out the tag `1.0.0` for the cited
+> version.
+
 ## Service requirements
 
 The demo needs the following services. The versions are those that the
@@ -188,3 +194,5 @@ infrastructure.
 [soft-rclone]: <https://rclone.org/commands/rclone_serve_s3/>
 [soft-smk-tes]: <https://github.com/snakemake/snakemake-executor-plugin-tes>
 [soft-tesk]: <https://github.com/elixir-cloud-aai/tesk>
+[release-1-0-0]: <https://github.com/elixir-cloud-aai/demo-tes-hybrid-cloud/releases/tag/1.0.0>
+[zenodo-1-0-0]: <https://doi.org/10.5281/zenodo.17038656>
