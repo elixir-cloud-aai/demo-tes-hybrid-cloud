@@ -139,7 +139,8 @@ notebook runs the workflow on each TES instance in turn, then through the gatewa
 Snakemake sends the Basic credentials of the Funnel instances if they are set, and
 the access token otherwise: the notebook leaves out `TES_TOKEN` for the runs on the
 TES instances, and `FUNNEL_SERVER_USER` and `FUNNEL_SERVER_PASSWORD` for the run
-through the gateway, so that each service gets only its own credentials. A cell fails if one of its Snakemake runs fails.
+through the gateway, so that each service gets only its own credentials. A cell
+fails if one of its Snakemake runs fails.
 
 ## Try it out locally
 

@@ -4,8 +4,9 @@
 # files that the README asks for, with the services and the dummy credentials
 # of the setup (which must match `compose.yaml` and `funnel.yaml`), runs all
 # cells of `demo.ipynb`, then checks the result of the workflow in S3 and the
-# tasks that went through proTES. It prints the output of all cells. Works on a copy of the
-# repository (mounted at `/src`), so that nothing is written to it.
+# tasks that went through proTES. It prints the output of all cells. Works on
+# a copy of the repository (mounted at `/src`), so that nothing is written to
+# it.
 set -euo pipefail
 
 gateway=http://protes:8080
@@ -40,9 +41,11 @@ tasks_url="${gateway}/ga4gh/tes/v1/tasks?view=MINIMAL"
 earlier="$(curl -fsS -H "Authorization: Bearer ${token}" "${tasks_url}" | jq -c '[.tasks[]?.id]')"
 
 echo "Running the notebook..."
-# Keeps the outputs of all cells, also if a cell fails (checked below)
+# Keeps the outputs of all cells, also if a cell fails or times out (checked
+# below)
 jupyter nbconvert --to notebook --execute --inplace --allow-errors \
-  --ExecutePreprocessor.timeout=1800 demo.ipynb
+  --ExecutePreprocessor.timeout=1800 \
+  --ExecutePreprocessor.interrupt_on_timeout=True demo.ipynb
 
 # The output of each cell; fails if a cell failed
 status=0
