@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+message: >-
+  If you use this demonstrator, please cite it using the metadata from this
+  file.
+title: demo-tes-hybrid-cloud
+abstract: >-
+  Demonstrating GA4GH TES usage in hybrid cloud use cases.
+type: software
+authors:
+  - given-names: Valentin
+    family-names: Schneider-Lunitz
+  - given-names: Alexander
+    family-names: Kanitz
+    orcid: "https://orcid.org/0000-0002-3468-0652"
+    affiliation: >-
+      Biozentrum, University of Basel, Basel, Switzerland; SIB Swiss Institute
+      of Bioinformatics, Lausanne, Switzerland
+doi: 10.5281/zenodo.17038655
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.17038655
+    description: >-
+      Concept DOI of all versions on Zenodo; it always resolves to the latest
+      version
+repository-code: "https://github.com/elixir-cloud-aai/demo-tes-hybrid-cloud"
+keywords:
+  - GA4GH
+  - Task Execution Service
+  - TES
+  - hybrid cloud
+  - federation
+license: Apache-2.0
+version: "1.0.0"
+date-released: "2025-09-02"
