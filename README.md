@@ -175,6 +175,13 @@ docker compose -f local/compose.yaml --profile demo down --volumes
 docker run --rm -v /tmp:/host-tmp alpine rm -rf /host-tmp/demo-tes-hybrid-cloud
 ```
 
+## Licence
+
+Everything in this repository, code, documentation and images included, is
+licensed under the [Apache License 2.0](LICENSE). Release
+[1.0.0][release-1-0-0] was archived on [Zenodo][zenodo-1-0-0] before the
+licence was added to the repository.
+
 ## Contact
 
 For questions and inquiries, please contact <cloud-service@elixir-europe.org>. You can
